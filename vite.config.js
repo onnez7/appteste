@@ -3,12 +3,17 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
-  server: {
-    host: '0.0.0.0',
-    port: 5173
+  optimizeDeps: {
+    include: ['@tensorflow-models/blazeface', '@tensorflow/tfjs', '@mediapipe/face_mesh'],
   },
   build: {
-    outDir: 'dist',
-    assetsDir: 'assets'
-  }
+    rollupOptions: {
+      external: [],
+    },
+  },
+  server: {
+    watch: {
+      usePolling: true, // Useful for Windows/WSL2 environments
+    },
+  },
 });

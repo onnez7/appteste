@@ -3,6 +3,8 @@ import Webcam from 'react-webcam';
 import { InformationCircleIcon, ArrowPathIcon, CameraIcon } from '@heroicons/react/24/outline';
 import BottomNavBar from '../components/BottomNavBar';
 import { FaceMesh } from '@mediapipe/face_mesh';
+import * as blazeface from '@tensorflow-models/blazeface';
+import * as tf from '@tensorflow/tfjs';
 
 export default function Measurements() {
   const [showCamera, setShowCamera] = useState(false);
@@ -18,19 +20,21 @@ export default function Measurements() {
   const [pixelScale, setPixelScale] = useState(1);
   const [isModelLoaded, setIsModelLoaded] = useState(false);
   const [modelError, setModelError] = useState(null);
-  const [adjustedDp, setAdjustedDp] = useState(62); // DP ajustada pelo usuário
+  const [adjustedDp, setAdjustedDp] = useState(62);
+  const [useBlazeFace, setUseBlazeFace] = useState(false);
   const webcamRef = useRef(null);
   const canvasRef = useRef(null);
   const faceMeshRef = useRef(null);
+  const blazeFaceModelRef = useRef(null);
 
-  // Inicializar MediaPipe Face Mesh
+  // Inicializar MediaPipe Face Mesh e BlazeFace
   useEffect(() => {
-    const loadFaceMesh = async () => {
+    const loadModels = async () => {
+      // Tentar carregar MediaPipe Face Mesh
       try {
         console.log('Carregando MediaPipe Face Mesh...');
-        console.log('Verificando disponibilidade do FaceMesh...');
         if (!FaceMesh) {
-          throw new Error('FaceMesh não está disponível. Verifique a importação de @mediapipe/face_mesh.');
+          throw new Error('FaceMesh não está disponível. Verifique @mediapipe/face_mesh.');
         }
 
         faceMeshRef.current = new FaceMesh({
@@ -40,7 +44,7 @@ export default function Measurements() {
         console.log('Configurando opções do FaceMesh...');
         faceMeshRef.current.setOptions({
           maxNumFaces: 1,
-          refineLandmarks: true, // Melhorar precisão para íris
+          refineLandmarks: true,
           minDetectionConfidence: 0.5,
           minTrackingConfidence: 0.5,
         });
@@ -50,13 +54,34 @@ export default function Measurements() {
         console.log('MediaPipe Face Mesh inicializado com sucesso.');
         setIsModelLoaded(true);
         setModelError(null);
+        return;
       } catch (error) {
         console.error('Erro ao inicializar MediaPipe Face Mesh:', error);
-        setModelError(`Falha ao carregar o modelo de IA: ${error.message}. Use o modo manual.`);
+        setModelError(`Falha ao carregar MediaPipe: ${error.message}. Tentando TensorFlow.js...`);
         setIsModelLoaded(false);
+        setUseBlazeFace(true);
+      }
+
+      // Fallback para BlazeFace
+      if (useBlazeFace) {
+        try {
+          console.log('Verificando disponibilidade do TensorFlow.js...');
+          if (!tf || !blazeface) {
+            throw new Error('TensorFlow.js ou BlazeFace não estão disponíveis. Verifique as dependências.');
+          }
+          console.log('Carregando BlazeFace (TensorFlow.js)...');
+          blazeFaceModelRef.current = await blazeface.load();
+          console.log('BlazeFace inicializado com sucesso.');
+          setIsModelLoaded(true);
+          setModelError(null);
+        } catch (error) {
+          console.error('Erro ao inicializar BlazeFace:', error);
+          setModelError(`Falha ao carregar BlazeFace: ${error.message}. Use o modo manual.`);
+          setIsModelLoaded(false);
+        }
       }
     };
-    loadFaceMesh();
+    loadModels();
 
     return () => {
       if (faceMeshRef.current) {
@@ -64,7 +89,7 @@ export default function Measurements() {
         faceMeshRef.current.close();
       }
     };
-  }, []);
+  }, [useBlazeFace]);
 
   // Função para capturar e processar a imagem
   const captureImage = async () => {
@@ -77,7 +102,6 @@ export default function Measurements() {
     if (imageSrc) {
       setCapturedImage(imageSrc);
 
-      // Criar uma imagem para processamento
       const img = new Image();
       img.src = imageSrc;
       img.onload = async () => {
@@ -95,60 +119,100 @@ export default function Measurements() {
 
         if (isModelLoaded) {
           try {
-            console.log('Processando imagem com MediaPipe Face Mesh...');
-            // Processar imagem com MediaPipe
-            await faceMeshRef.current.onResults((results) => {
-              if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
-                const landmarks = results.multiFaceLandmarks[0];
+            if (!useBlazeFace) {
+              console.log('Processando imagem com MediaPipe Face Mesh...');
+              await faceMeshRef.current.onResults((results) => {
+                if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+                  const landmarks = results.multiFaceLandmarks[0];
 
-                // Pontos da íris esquerda (MediaPipe: 468-473) e direita (474-479)
-                const leftIrisLeft = landmarks[468]; // Borda esquerda da íris esquerda
-                const leftIrisRight = landmarks[470]; // Borda direita da íris esquerda
-                const rightIrisLeft = landmarks[474]; // Borda esquerda da íris direita
-                const rightIrisRight = landmarks[476]; // Borda direita da íris direita
+                  const leftIrisLeft = landmarks[468];
+                  const leftIrisRight = landmarks[470];
+                  const rightIrisLeft = landmarks[474];
+                  const rightIrisRight = landmarks[476];
 
-                // Calcular largura média da íris em pixels
-                const leftIrisWidth = Math.abs(leftIrisRight.x - leftIrisLeft.x) * img.width;
-                const rightIrisWidth = Math.abs(rightIrisRight.x - rightIrisLeft.x) * img.width;
-                const avgIrisWidth = (leftIrisWidth + rightIrisWidth) / 2;
+                  const leftIrisWidth = Math.abs(leftIrisRight.x - leftIrisLeft.x) * img.width;
+                  const rightIrisWidth = Math.abs(rightIrisRight.x - rightIrisLeft.x) * img.width;
+                  const avgIrisWidth = (leftIrisWidth + rightIrisWidth) / 2;
 
-                // Calcular escala usando largura média da íris (12 mm)
+                  const averageIrisMm = 12;
+                  scale = averageIrisMm / avgIrisWidth;
+                  setPixelScale(scale);
+
+                  const leftPupil = landmarks[468];
+                  const rightPupil = landmarks[474];
+                  dpPixels = Math.abs(rightPupil.x - leftPupil.x) * img.width;
+
+                  const leftEyeOuter = landmarks[130];
+                  const rightEyeOuter = landmarks[359];
+                  faceWidthPixels = Math.abs(rightEyeOuter.x - leftEyeOuter.x) * img.width;
+
+                  const eyeCenterY = (leftPupil.y + rightPupil.y) / 2 * img.height;
+                  const mouth = landmarks[13];
+                  lensHeightPixels = Math.abs(eyeCenterY - mouth.y * img.height);
+
+                  const leftTemple = landmarks[234];
+                  const rightTemple = landmarks[454];
+                  templeWidthPixels = Math.abs(rightTemple.x - leftTemple.x) * img.width;
+
+                  ctx.beginPath();
+                  ctx.arc(leftPupil.x * img.width, leftPupil.y * img.height, 5, 0, 2 * Math.PI);
+                  ctx.arc(rightPupil.x * img.width, rightPupil.y * img.height, 5, 0, 2 * Math.PI);
+                  ctx.fillStyle = 'red';
+                  ctx.fill();
+                  ctx.strokeStyle = 'blue';
+                  ctx.moveTo(leftPupil.x * img.width, leftPupil.y * img.height);
+                  ctx.lineTo(rightPupil.x * img.width, rightPupil.y * img.height);
+                  ctx.stroke();
+
+                  const calculatedDp = Math.round(dpPixels * scale);
+                  setAdjustedDp(calculatedDp);
+                  setMeasurements({
+                    dp: calculatedDp,
+                    faceWidth: Math.round(faceWidthPixels * scale),
+                    lensHeight: Math.round(lensHeightPixels * scale),
+                    templeWidth: Math.round(templeWidthPixels * scale),
+                  });
+
+                  console.log('Medições calculadas com MediaPipe:', measurements);
+                } else {
+                  console.warn('Nenhum rosto detectado na imagem.');
+                  alert('Nenhum rosto detectado. Certifique-se de que seu rosto está visível.');
+                }
+              });
+
+              await faceMeshRef.current.send({ image: img });
+            } else {
+              console.log('Processando imagem com BlazeFace...');
+              const predictions = await blazeFaceModelRef.current.estimateFaces(img);
+              if (predictions.length > 0) {
+                const face = predictions[0];
+                const leftEye = face.landmarks[0];
+                const rightEye = face.landmarks[1];
+
+                const eyeDistance = Math.abs(rightEye[0] - leftEye[0]);
+                const avgIrisWidth = eyeDistance / 3;
+
                 const averageIrisMm = 12;
                 scale = averageIrisMm / avgIrisWidth;
                 setPixelScale(scale);
 
-                // Calcular DP (distância entre centros das pupilas)
-                const leftPupil = landmarks[468]; // Aproximação do centro da pupila esquerda
-                const rightPupil = landmarks[474]; // Aproximação do centro da pupila direita
-                dpPixels = Math.abs(rightPupil.x - rightPupil.x) * img.width;
+                dpPixels = eyeDistance;
+                faceWidthPixels = face.bottomRight[0] - face.topLeft[0];
+                const mouth = face.landmarks[3];
+                const eyeCenterY = (leftEye[1] + rightEye[1]) / 2;
+                lensHeightPixels = Math.abs(eyeCenterY - mouth[1]);
+                templeWidthPixels = faceWidthPixels * 1.2;
 
-                // Calcular largura do rosto (baseado nas bordas externas dos olhos)
-                const leftEyeOuter = landmarks[130]; // Canto externo do olho esquerdo
-                const rightEyeOuter = landmarks[359]; // Canto externo do olho direito
-                faceWidthPixels = Math.abs(rightEyeOuter.x - leftEyeOuter.x) * img.width;
-
-                // Calcular altura da lente (distância entre olhos e boca)
-                const eyeCenterY = (leftPupil.y + rightPupil.y) / 2 * img.height;
-                const mouth = landmarks[13]; // Centro da boca
-                lensHeightPixels = Math.abs(eyeCenterY - mouth.y * img.height);
-
-                // Calcular largura entre as têmporas (baseado nas bordas da face)
-                const leftTemple = landmarks[234]; // Têmpora esquerda
-                const rightTemple = landmarks[454]; // Têmpora direita
-                templeWidthPixels = Math.abs(rightTemple.x - leftTemple.x) * img.width;
-
-                // Desenhar marcações no canvas
                 ctx.beginPath();
-                ctx.arc(leftPupil.x * img.width, leftPupil.y * img.height, 5, 0, 2 * Math.PI);
-                ctx.arc(rightPupil.x * img.width, rightPupil.y * img.height, 5, 0, 2 * Math.PI);
+                ctx.arc(leftEye[0], leftEye[1], 5, 0, 2 * Math.PI);
+                ctx.arc(rightEye[0], rightEye[1], 5, 0, 2 * Math.PI);
                 ctx.fillStyle = 'red';
                 ctx.fill();
                 ctx.strokeStyle = 'blue';
-                ctx.moveTo(leftPupil.x * img.width, leftPupil.y * img.height);
-                ctx.lineTo(rightPupil.x * img.width, rightPupil.y * img.height);
+                ctx.moveTo(leftEye[0], leftEye[1]);
+                ctx.lineTo(rightEye[0], rightEye[1]);
                 ctx.stroke();
 
-                // Converter pixels para mm
                 const calculatedDp = Math.round(dpPixels * scale);
                 setAdjustedDp(calculatedDp);
                 setMeasurements({
@@ -158,14 +222,12 @@ export default function Measurements() {
                   templeWidth: Math.round(templeWidthPixels * scale),
                 });
 
-                console.log('Medições calculadas com MediaPipe:', measurements);
+                console.log('Medições calculadas com BlazeFace:', measurements);
               } else {
                 console.warn('Nenhum rosto detectado na imagem.');
                 alert('Nenhum rosto detectado. Certifique-se de que seu rosto está visível.');
               }
-            });
-
-            await faceMeshRef.current.send({ image: img });
+            }
           } catch (error) {
             console.error('Erro ao processar imagem:', error);
             alert('Erro ao processar a imagem. Use o modo manual.');
@@ -174,8 +236,7 @@ export default function Measurements() {
         }
 
         if (!isModelLoaded) {
-          // Modo manual: usar DP ajustada pelo usuário
-          scale = adjustedDp / 100; // Aproximação (100 pixels como base)
+          scale = adjustedDp / 100;
           setPixelScale(scale);
           dpPixels = 100;
           faceWidthPixels = 200;
@@ -194,11 +255,9 @@ export default function Measurements() {
     }
   };
 
-  // Salvar medições e armazenar ajuste do usuário
   const handleSave = () => {
     if (capturedImage && measurements.dp > 0) {
       setSavedMeasurements(measurements);
-      // Armazenar ajuste do usuário no localStorage para aprendizado futuro
       localStorage.setItem('userAdjustedDp', adjustedDp);
       setShowCamera(false);
       setCapturedImage(null);
@@ -207,7 +266,6 @@ export default function Measurements() {
     }
   };
 
-  // Refazer medições
   const handleRedo = () => {
     setShowCamera(false);
     setCapturedImage(null);
@@ -220,7 +278,6 @@ export default function Measurements() {
     });
   };
 
-  // Carregar DP ajustada anteriormente (se disponível)
   useEffect(() => {
     const storedDp = localStorage.getItem('userAdjustedDp');
     if (storedDp) {
