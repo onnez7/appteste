@@ -3,16 +3,7 @@ import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
 import { QuestionMarkCircleIcon, MapPinIcon, ClockIcon, UserIcon } from '@heroicons/react/24/outline';
 
-interface TimeSlot {
-  time: string;
-  shift: 'morning' | 'afternoon';
-}
-
-interface AvailableTimes {
-  [key: string]: TimeSlot[];
-}
-
-const availableTimes: AvailableTimes = {
+const availableTimes = {
   '2025-05-12': [
     { time: '09:00', shift: 'morning' },
     { time: '10:30', shift: 'morning' },
@@ -48,14 +39,14 @@ const availableDates = [
 ];
 
 export default function ConsultationScheduler() {
-  const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
-  const [selectedTime, setSelectedTime] = useState<string | null>(null);
-  const [selectedProfessional, setSelectedProfessional] = useState<string | null>(null);
-  const [shiftFilter, setShiftFilter] = useState<'morning' | 'afternoon' | null>(null);
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [selectedTime, setSelectedTime] = useState(null);
+  const [selectedProfessional, setSelectedProfessional] = useState(null);
+  const [shiftFilter, setShiftFilter] = useState(null);
 
   const filteredTimes = selectedDate
     ? (availableTimes[selectedDate.toISOString().split('T')[0]] || [])
-        .filter((slot: TimeSlot) => !shiftFilter || slot.shift === shiftFilter)
+        .filter(slot => !shiftFilter || slot.shift === shiftFilter)
     : [];
 
   const handleConfirm = () => {
@@ -70,7 +61,7 @@ export default function ConsultationScheduler() {
     }
   };
 
-  const isDateAvailable = (date: Date) => {
+  const isDateAvailable = (date) => {
     return availableDates.some(
       (d) =>
         d.getDate() === date.getDate() &&
@@ -88,9 +79,11 @@ export default function ConsultationScheduler() {
       <div className="mb-6">
         <h2 className="text-lg font-semibold text-gray-800 mb-2">Selecione uma Data</h2>
         <Calendar
-          onChange={(value: Date | Date[] | null, event: React.MouseEvent<HTMLButtonElement>) => {
+          onChange={(value) => {
             if (value instanceof Date) {
               setSelectedDate(value);
+            } else if (Array.isArray(value) && value[0] instanceof Date) {
+              setSelectedDate(value[0]);
             } else {
               setSelectedDate(null);
             }
@@ -125,7 +118,7 @@ export default function ConsultationScheduler() {
           </div>
           <div className="flex flex-wrap gap-2">
             {filteredTimes.length > 0 ? (
-              filteredTimes.map((slot: TimeSlot, idx: number) => (
+              filteredTimes.map((slot, idx) => (
                 <button
                   key={idx}
                   onClick={() => setSelectedTime(slot.time)}

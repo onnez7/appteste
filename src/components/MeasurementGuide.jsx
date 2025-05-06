@@ -2,27 +2,20 @@ import { useState, useRef } from 'react';
 import Webcam from 'react-webcam';
 import { InformationCircleIcon, ArrowPathIcon, EyeIcon } from '@heroicons/react/24/outline';
 
-interface Measurements {
-  dp: number;
-  faceWidth: number;
-  lensHeight: number;
-  templeWidth: number;
-}
-
 export default function MeasurementGuide() {
   const [showCamera, setShowCamera] = useState(false);
-  const [measurements, setMeasurements] = useState<Measurements>({
+  const [measurements, setMeasurements] = useState({
     dp: 62,
     faceWidth: 140,
     lensHeight: 35,
     templeWidth: 130,
   });
   const [rulerPosition, setRulerPosition] = useState(50);
-  const [savedMeasurements, setSavedMeasurements] = useState<Measurements | null>(null);
+  const [savedMeasurements, setSavedMeasurements] = useState(null);
   const [showModal, setShowModal] = useState(false);
-  const webcamRef = useRef<Webcam>(null);
+  const webcamRef = useRef(null);
 
-  const handleRulerAdjust = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleRulerAdjust = (e) => {
     const newPosition = Number(e.target.value);
     setRulerPosition(newPosition);
     setMeasurements({

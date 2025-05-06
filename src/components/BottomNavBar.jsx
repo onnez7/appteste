@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { HomeIcon, CreditCardIcon, CalendarIcon, UserIcon, EyeIcon, } from '@heroicons/react/24/outline';
+import { HomeIcon, CreditCardIcon, CalendarIcon, UserIcon, EyeIcon } from '@heroicons/react/24/outline';
 
 export default function BottomNavBar() {
   return (
@@ -15,13 +15,7 @@ export default function BottomNavBar() {
   );
 }
 
-interface NavItemProps {
-  to: string;
-  icon: JSX.Element;
-  label: string;
-}
-
-function NavItem({ to, icon, label }: NavItemProps) {
+function NavItem({ to, icon, label }) {
   return (
     <NavLink
       to={to}

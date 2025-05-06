@@ -2,37 +2,32 @@
   "name": "app-visao",
   "private": true,
   "version": "0.0.0",
-  "type": "module",
   "scripts": {
-    "dev": "npx vite",
-    "build": "npx tsc -b && npx vite build",
-    "lint": "eslint .",
-    "preview": "npx vite preview"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",
     "@tailwindcss/forms": "^0.5.10",
-    "@tailwindcss/vite": "^4.1.5",
     "@vercel/speed-insights": "^1.2.0",
-    "react": "^19.0.0",
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.3",
+    "react": "^18.2.0",
     "react-calendar": "^5.1.0",
-    "react-dom": "^19.0.0",
-    "react-router-dom": "^7.5.3",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.22.0",
     "react-webcam": "^7.2.0",
     "solar-icon-set": "^1.0.0",
-    "tailwindcss": "^4.1.5"
+    "tailwindcss": "^3.4.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.22.0",
-    "@types/react": "^19.0.10",
-    "@types/react-dom": "^19.0.4",
     "@vitejs/plugin-react": "^4.3.4",
     "eslint": "^9.22.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.19",
     "globals": "^16.0.0",
-    "typescript": "~5.7.2",
-    "typescript-eslint": "^8.26.1",
-    "vite": "^6.3.1"
+    "vite": "^5.0.0"
   }
 }
