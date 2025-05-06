@@ -1,0 +1,6 @@
+<Error>
+<SCRIPT id="allow-copy_script"/>
+<Code>NoSuchKey</Code>
+<Message>The specified key does not exist.</Message>
+<Details>No such object: mediapipe-assets/face_mesh_binarypb</Details>
+</Error>
