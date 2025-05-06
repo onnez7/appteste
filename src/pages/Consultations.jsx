@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
 import { QuestionMarkCircleIcon, MapPinIcon, ClockIcon, UserIcon } from '@heroicons/react/24/outline';
+import BottomNavBar from '../components/BottomNavBar';
 
 const availableTimes = {
   '2025-05-12': [
@@ -250,6 +251,7 @@ export default function Consultations() {
           <p className="text-sm text-gray-600">Nenhum histórico de consultas.</p>
         )}
       </div>
+      <BottomNavBar />
     </div>
   );
 }

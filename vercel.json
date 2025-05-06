@@ -17,11 +17,5 @@
       "src": "/(.*)",
       "dest": "/index.html"
     }
-  ],
-  "rewrite": [
-    {
-      "source": "/subdiretorio/(.*)",
-      "destination": "/$1"
-    }
   ]
 }
