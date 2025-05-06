@@ -1,14 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Webcam from 'react-webcam';
 import { CameraIcon } from '@heroicons/react/24/outline';
-import { FaceMesh } from '@mediapipe/face_mesh';
 import * as blazeface from '@tensorflow-models/blazeface';
 import * as tf from '@tensorflow/tfjs';
+import * as faceapi from 'face-api.js';
 
-export default function WebcamCapture({ onCapture, onError }) {
-  const [showCamera, setShowCamera] = useState(false);
+export default function WebcamCapture({ onCapture, onError, showCamera, onShowCamera }) {
   const [isModelLoaded, setIsModelLoaded] = useState(false);
-  const [useBlazeFace, setUseBlazeFace] = useState(false);
+  const [modelType, setModelType] = useState(null); // 'faceMesh', 'blazeFace', or 'faceApi'
   const [capturing, setCapturing] = useState(false);
   const webcamRef = useRef(null);
   const canvasRef = useRef(null);
@@ -18,15 +17,31 @@ export default function WebcamCapture({ onCapture, onError }) {
 
   // Inicializar modelos
   useEffect(() => {
+    let isMounted = true;
+
     const loadModels = async () => {
+      // 1. Tentar MediaPipe FaceMesh
       try {
         console.log('Carregando MediaPipe Face Mesh...');
+        await import('https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/face_mesh.js');
+        const FaceMesh = window.FaceMesh;
+
         if (!FaceMesh) {
           throw new Error('FaceMesh não está disponível.');
         }
 
+        if (!isMounted) return;
+
         faceMeshRef.current = new FaceMesh({
-          locateFile: (file) => `/mediapipe/${file}`,
+          locateFile: (file) => {
+            if (file === 'face_mesh.tflite') {
+              return '/mediapipe/face_mesh.tflite';
+            }
+            if (file === 'face_mesh_solution_wasm_bin.wasm') {
+              return '/mediapipe/face_mesh.wasm';
+            }
+            return `/mediapipe/${file}`;
+          },
         });
 
         faceMeshRef.current.setOptions({
@@ -38,46 +53,80 @@ export default function WebcamCapture({ onCapture, onError }) {
 
         await faceMeshRef.current.initialize();
         console.log('MediaPipe Face Mesh inicializado.');
-        setIsModelLoaded(true);
+        if (isMounted) {
+          setIsModelLoaded(true);
+          setModelType('faceMesh');
+        }
         return;
       } catch (error) {
         console.error('Erro ao carregar MediaPipe:', error);
-        onError(`Falha ao carregar MediaPipe: ${error.message}. Tentando TensorFlow.js...`);
-        setUseBlazeFace(true);
+        if (isMounted) {
+          onError(`Falha ao carregar MediaPipe: ${error.message}. Tentando BlazeFace...`);
+        }
       }
 
-      if (useBlazeFace) {
-        try {
-          console.log('Carregando BlazeFace...');
-          blazeFaceModelRef.current = await blazeface.load();
-          console.log('BlazeFace inicializado.');
+      // 2. Tentar BlazeFace
+      try {
+        console.log('Configurando backend CPU para TensorFlow.js...');
+        await tf.setBackend('cpu');
+        await tf.ready();
+        console.log('Backend CPU configurado. Carregando BlazeFace...');
+        blazeFaceModelRef.current = await blazeface.load();
+        console.log('BlazeFace inicializado.');
+        if (isMounted) {
           setIsModelLoaded(true);
-        } catch (error) {
-          console.error('Erro ao carregar BlazeFace:', error);
-          onError(`Falha ao carregar BlazeFace: ${error.message}.`);
+          setModelType('blazeFace');
+        }
+        return;
+      } catch (error) {
+        console.error('Erro ao carregar BlazeFace:', error);
+        if (isMounted) {
+          onError(`Falha ao carregar BlazeFace: ${error.message}. Tentando face-api.js...`);
+        }
+      }
+
+      // 3. Tentar face-api.js
+      try {
+        console.log('Carregando face-api.js...');
+        await faceapi.nets.tinyFaceDetector.loadFromUri('/models');
+        await faceapi.nets.faceLandmark68Net.loadFromUri('/models');
+        console.log('face-api.js inicializado.');
+        if (isMounted) {
+          setIsModelLoaded(true);
+          setModelType('faceApi');
+        }
+      } catch (error) {
+        console.error('Erro ao carregar face-api.js:', error);
+        if (isMounted) {
+          onError(`Falha ao carregar face-api.js: ${error.message}. Tente novamente.`);
           setIsModelLoaded(false);
         }
       }
     };
-    loadModels();
+
+    if (showCamera) {
+      loadModels();
+    }
 
     return () => {
+      isMounted = false;
       if (faceMeshRef.current) {
+        console.log('Fechando FaceMesh...');
         faceMeshRef.current.close();
       }
     };
-  }, [useBlazeFace, onError]);
+  }, [showCamera]);
 
   // Captura múltiplas imagens para mapeamento 3D
   const captureImages = async () => {
     if (!isModelLoaded) {
-      onError('Modelo de IA não carregado.');
+      onError('Modelo de IA não carregado. Aguarde ou tente novamente.');
       return;
     }
 
     setCapturing(true);
     framesRef.current = [];
-    const captureCount = 5; // Capturar 5 frames
+    const captureCount = 5;
     let captured = 0;
 
     const captureFrame = async () => {
@@ -95,17 +144,28 @@ export default function WebcamCapture({ onCapture, onError }) {
 
         let landmarks = null;
         try {
-          if (!useBlazeFace) {
+          if (modelType === 'faceMesh') {
             await faceMeshRef.current.onResults((results) => {
               if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
                 landmarks = results.multiFaceLandmarks[0];
               }
             });
             await faceMeshRef.current.send({ image: img });
-          } else {
+          } else if (modelType === 'blazeFace') {
             const predictions = await blazeFaceModelRef.current.estimateFaces(img);
             if (predictions.length > 0) {
               landmarks = predictions[0].landmarks.map(([x, y]) => ({ x: x / img.width, y: y / img.height, z: 0 }));
+            }
+          } else if (modelType === 'faceApi') {
+            const detections = await faceapi
+              .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions())
+              .withFaceLandmarks();
+            if (detections) {
+              landmarks = detections.landmarks.positions.map((p) => ({
+                x: p.x / img.width,
+                y: p.y / img.height,
+                z: 0,
+              }));
             }
           }
 
@@ -115,13 +175,19 @@ export default function WebcamCapture({ onCapture, onError }) {
             console.log(`Frame ${captured} capturado.`);
           } else {
             console.warn('Nenhum rosto detectado no frame.');
+            onError('Nenhum rosto detectado. Certifique-se de que seu rosto está visível e bem iluminado.');
+            setCapturing(false);
+            return;
           }
         } catch (error) {
           console.error('Erro ao processar frame:', error);
+          onError('Erro ao processar a imagem. Certifique-se de que seu rosto está visível e bem iluminado.');
+          setCapturing(false);
+          return;
         }
 
         if (captured < captureCount) {
-          setTimeout(captureFrame, 500); // Captura a cada 500ms
+          setTimeout(captureFrame, 500);
         } else {
           processFrames();
         }
@@ -148,7 +214,7 @@ export default function WebcamCapture({ onCapture, onError }) {
     const irisWidths = [];
 
     framesRef.current.forEach(({ landmarks, image }) => {
-      if (useBlazeFace) {
+      if (modelType === 'blazeFace') {
         const leftEye = landmarks[0];
         const rightEye = landmarks[1];
         const eyeDistance = Math.abs(rightEye[0] - leftEye[0]) * image.width;
@@ -160,7 +226,27 @@ export default function WebcamCapture({ onCapture, onError }) {
         lensHeightPixels += Math.abs(eyeCenterY - mouth[1]) * image.height;
         templeWidthPixels += faceWidthPixels * 1.2;
         noseLengthPixels += Math.abs(landmarks[2][1] - mouth[1]) * image.height;
+      } else if (modelType === 'faceApi') {
+        // Ajustar índices para face-api.js (68 landmarks)
+        const leftEyeCenter = landmarks[36]; // Aproximação do centro do olho esquerdo
+        const rightEyeCenter = landmarks[45]; // Aproximação do centro do olho direito
+        const eyeDistance = Math.abs(rightEyeCenter.x - leftEyeCenter.x) * image.width;
+        irisWidths.push(eyeDistance / 3);
+        dpPixels += eyeDistance;
+
+        const leftFaceEdge = landmarks[0]; // Borda esquerda do rosto
+        const rightFaceEdge = landmarks[16]; // Borda direita do rosto
+        faceWidthPixels += Math.abs(rightFaceEdge.x - leftFaceEdge.x) * image.width;
+
+        const eyeCenterY = (leftEyeCenter.y + rightEyeCenter.y) / 2 * image.height;
+        const mouth = landmarks[57]; // Centro da boca
+        lensHeightPixels += Math.abs(eyeCenterY - mouth.y * image.height);
+
+        templeWidthPixels += faceWidthPixels * 1.2; // Aproximação
+        const noseTip = landmarks[30]; // Ponta do nariz
+        noseLengthPixels += Math.abs(noseTip.y - mouth.y) * image.height;
       } else {
+        // MediaPipe FaceMesh
         const leftIrisLeft = landmarks[468];
         const leftIrisRight = landmarks[470];
         const rightIrisLeft = landmarks[474];
@@ -206,7 +292,6 @@ export default function WebcamCapture({ onCapture, onError }) {
     const noseLengthMm = noseLengthPixels * scale;
     if (eyeWidthMm < 25 || eyeWidthMm > 35 || noseLengthMm < 35 || noseLengthMm > 45) {
       console.warn('Calibração fora do esperado. Usando escala padrão.');
-      // Ajustar escala com base na média dos olhos e nariz, se necessário
     }
 
     const measurements = {
@@ -224,7 +309,7 @@ export default function WebcamCapture({ onCapture, onError }) {
     ctx.drawImage(lastFrame.image, 0, 0);
     const landmarks = lastFrame.landmarks;
 
-    if (!useBlazeFace) {
+    if (modelType === 'faceMesh') {
       const leftPupil = landmarks[468];
       const rightPupil = landmarks[474];
       ctx.beginPath();
@@ -236,7 +321,7 @@ export default function WebcamCapture({ onCapture, onError }) {
       ctx.moveTo(leftPupil.x * canvas.width, leftPupil.y * canvas.height);
       ctx.lineTo(rightPupil.x * canvas.width, rightPupil.y * canvas.height);
       ctx.stroke();
-    } else {
+    } else if (modelType === 'blazeFace') {
       const leftEye = landmarks[0];
       const rightEye = landmarks[1];
       ctx.beginPath();
@@ -247,6 +332,18 @@ export default function WebcamCapture({ onCapture, onError }) {
       ctx.strokeStyle = 'blue';
       ctx.moveTo(leftEye[0], leftEye[1]);
       ctx.lineTo(rightEye[0], rightEye[1]);
+      ctx.stroke();
+    } else if (modelType === 'faceApi') {
+      const leftEye = landmarks[36];
+      const rightEye = landmarks[45];
+      ctx.beginPath();
+      ctx.arc(leftEye.x * canvas.width, leftEye.y * canvas.height, 5, 0, 2 * Math.PI);
+      ctx.arc(rightEye.x * canvas.width, rightEye.y * canvas.height, 5, 0, 2 * Math.PI);
+      ctx.fillStyle = 'red';
+      ctx.fill();
+      ctx.strokeStyle = 'blue';
+      ctx.moveTo(leftEye.x * canvas.width, leftEye.y * canvas.height);
+      ctx.lineTo(rightEye.x * canvas.width, rightEye.y * canvas.height);
       ctx.stroke();
     }
 
@@ -269,7 +366,7 @@ export default function WebcamCapture({ onCapture, onError }) {
       </div>
       <div className="flex space-x-2 mt-4">
         <button
-          onClick={() => setShowCamera(!showCamera)}
+          onClick={() => onShowCamera(!showCamera)}
           className="flex-1 bg-primary text-white px-4 py-2 rounded-full text-sm hover:bg-opacity-80 transition"
         >
           {showCamera ? 'Fechar Câmera' : 'Abrir Câmera'}

@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import path from 'path';
 
 export default defineConfig({
   plugins: [react()],
@@ -13,7 +14,12 @@ export default defineConfig({
   },
   server: {
     watch: {
-      usePolling: true, // Useful for Windows/WSL2 environments
+      usePolling: true,
+    },
+  },
+  resolve: {
+    alias: {
+      '@mediapipe/face_mesh': path.resolve(__dirname, 'node_modules/@mediapipe/face_mesh'),
     },
   },
 });
