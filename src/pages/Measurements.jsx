@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import Webcam from 'react-webcam';
 import { InformationCircleIcon, ArrowPathIcon, EyeIcon } from '@heroicons/react/24/outline';
 import BottomNavBar from '../components/BottomNavBar';
