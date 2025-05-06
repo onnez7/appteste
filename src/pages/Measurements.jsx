@@ -15,18 +15,26 @@ export default function Measurements() {
   const [capturedImage, setCapturedImage] = useState(null);
   const [savedMeasurements, setSavedMeasurements] = useState(null);
   const [showModal, setShowModal] = useState(false);
-  const [pixelScale, setPixelScale] = useState(1); // Escala de pixels por mm
+  const [pixelScale, setPixelScale] = useState(1);
   const [isModelLoaded, setIsModelLoaded] = useState(false);
+  const [modelError, setModelError] = useState(null);
   const webcamRef = useRef(null);
   const canvasRef = useRef(null);
 
   // Carregar modelos do face-api.js
   useEffect(() => {
     const loadModels = async () => {
-      await faceapi.nets.ssdMobilenetv1.loadFromUri('/models');
-      await faceapi.nets.faceLandmark68Net.loadFromUri('/models');
-      await faceapi.nets.faceRecognitionNet.loadFromUri('/models');
-      setIsModelLoaded(true);
+      try {
+        console.log('Iniciando carregamento dos modelos...');
+        await faceapi.nets.tinyFaceDetector.loadFromUri('/models');
+        await faceapi.nets.faceLandmark68TinyNet.loadFromUri('/models');
+        console.log('Modelos carregados com sucesso.');
+        setIsModelLoaded(true);
+      } catch (error) {
+        console.error('Erro ao carregar modelos:', error);
+        setModelError('Falha ao carregar os modelos de IA. Tente novamente mais tarde.');
+        setIsModelLoaded(false);
+      }
     };
     loadModels();
   }, []);
@@ -34,7 +42,7 @@ export default function Measurements() {
   // Função para capturar e processar a imagem
   const captureImage = async () => {
     if (!isModelLoaded) {
-      alert('Os modelos de IA ainda estão carregando. Tente novamente em alguns segundos.');
+      alert(modelError || 'Os modelos de IA ainda estão carregando. Tente novamente em alguns segundos.');
       return;
     }
 
@@ -53,59 +61,63 @@ export default function Measurements() {
         ctx.drawImage(img, 0, 0, img.width, img.height);
 
         // Detectar rosto e landmarks
-        const detections = await faceapi
-          .detectSingleFace(img)
-          .withFaceLandmarks()
-          .withFaceDescriptor();
+        try {
+          const detections = await faceapi
+            .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions())
+            .withFaceLandmarks(true);
 
-        if (detections) {
-          const landmarks = detections.landmarks;
+          if (detections) {
+            const landmarks = detections.landmarks;
 
-          // Calcular a distância pupilar (DP)
-          const leftPupil = landmarks.getLeftEye()[3]; // Ponto central do olho esquerdo
-          const rightPupil = landmarks.getRightEye()[0]; // Ponto central do olho direito
-          const dpPixels = Math.abs(rightPupil.x - leftPupil.x);
+            // Calcular a distância pupilar (DP)
+            const leftPupil = landmarks.getLeftEye()[3];
+            const rightPupil = landmarks.getRightEye()[0];
+            const dpPixels = Math.abs(rightPupil.x - leftPupil.x);
 
-          // Calcular a escala usando a DP média (62 mm)
-          const averageDpMm = 62; // Distância pupilar média em mm
-          const scale = averageDpMm / dpPixels; // mm por pixel
-          setPixelScale(scale);
+            // Calcular a escala usando a DP média (62 mm)
+            const averageDpMm = 62;
+            const scale = averageDpMm / dpPixels;
+            setPixelScale(scale);
 
-          // Calcular largura do rosto (baseado nas bordas externas dos olhos)
-          const faceWidthPixels = Math.abs(
-            landmarks.getLeftEye()[0].x - landmarks.getRightEye()[3].x
-          );
+            // Calcular largura do rosto
+            const faceWidthPixels = Math.abs(
+              landmarks.getLeftEye()[0].x - landmarks.getRightEye()[3].x
+            );
 
-          // Calcular altura da lente (baseado na distância entre olhos e sobrancelhas)
-          const eyeCenterY = (leftPupil.y + rightPupil.y) / 2;
-          const forehead = landmarks.getMouth()[0]; // Aproximação da testa
-          const lensHeightPixels = Math.abs(eyeCenterY - forehead.y);
+            // Calcular altura da lente
+            const eyeCenterY = (leftPupil.y + rightPupil.y) / 2;
+            const forehead = landmarks.getMouth()[0];
+            const lensHeightPixels = Math.abs(eyeCenterY - forehead.y);
 
-          // Calcular largura entre as têmporas (baseado nas bordas da mandíbula)
-          const templeWidthPixels = Math.abs(
-            landmarks.getJawOutline()[0].x - landmarks.getJawOutline()[16].x
-          );
+            // Calcular largura entre as têmporas
+            const templeWidthPixels = Math.abs(
+              landmarks.getJawOutline()[0].x - landmarks.getJawOutline()[16].x
+            );
 
-          // Converter pixels para mm
-          setMeasurements({
-            dp: Math.round(dpPixels * scale),
-            faceWidth: Math.round(faceWidthPixels * scale),
-            lensHeight: Math.round(lensHeightPixels * scale),
-            templeWidth: Math.round(templeWidthPixels * scale),
-          });
+            // Converter pixels para mm
+            setMeasurements({
+              dp: Math.round(dpPixels * scale),
+              faceWidth: Math.round(faceWidthPixels * scale),
+              lensHeight: Math.round(lensHeightPixels * scale),
+              templeWidth: Math.round(templeWidthPixels * scale),
+            });
 
-          // Desenhar marcações no canvas
-          ctx.beginPath();
-          ctx.arc(leftPupil.x, leftPupil.y, 5, 0, 2 * Math.PI);
-          ctx.arc(rightPupil.x, rightPupil.y, 5, 0, 2 * Math.PI);
-          ctx.fillStyle = 'red';
-          ctx.fill();
-          ctx.strokeStyle = 'blue';
-          ctx.moveTo(leftPupil.x, leftPupil.y);
-          ctx.lineTo(rightPupil.x, rightPupil.y);
-          ctx.stroke();
-        } else {
-          alert('Nenhum rosto detectado. Certifique-se de que seu rosto está visível na imagem.');
+            // Desenhar marcações no canvas
+            ctx.beginPath();
+            ctx.arc(leftPupil.x, leftPupil.y, 5, 0, 2 * Math.PI);
+            ctx.arc(rightPupil.x, rightPupil.y, 5, 0, 2 * Math.PI);
+            ctx.fillStyle = 'red';
+            ctx.fill();
+            ctx.strokeStyle = 'blue';
+            ctx.moveTo(leftPupil.x, leftPupil.y);
+            ctx.lineTo(rightPupil.x, rightPupil.y);
+            ctx.stroke();
+          } else {
+            alert('Nenhum rosto detectado. Certifique-se de que seu rosto está visível na imagem.');
+          }
+        } catch (error) {
+          console.error('Erro ao processar imagem:', error);
+          alert('Erro ao processar a imagem. Tente novamente.');
         }
       };
     }
@@ -140,7 +152,9 @@ export default function Measurements() {
       <div className="mb-6">
         <h2 className="text-lg font-semibold text-gray-800 mb-2">Realizar Medições com IA</h2>
         {!isModelLoaded && (
-          <p className="text-sm text-gray-600 mb-2">Carregando modelos de IA, aguarde...</p>
+          <p className="text-sm text-red-600 mb-2">
+            {modelError || 'Carregando modelos de IA, aguarde...'}
+          </p>
         )}
         {showCamera && (
           <div className="relative">
