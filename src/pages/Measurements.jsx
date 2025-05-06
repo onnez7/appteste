@@ -66,6 +66,11 @@ export default function Measurements() {
           const rightPupil = landmarks.getRightEye()[0]; // Ponto central do olho direito
           const dpPixels = Math.abs(rightPupil.x - leftPupil.x);
 
+          // Calcular a escala usando a DP média (62 mm)
+          const averageDpMm = 62; // Distância pupilar média em mm
+          const scale = averageDpMm / dpPixels; // mm por pixel
+          setPixelScale(scale);
+
           // Calcular largura do rosto (baseado nas bordas externas dos olhos)
           const faceWidthPixels = Math.abs(
             landmarks.getLeftEye()[0].x - landmarks.getRightEye()[3].x
@@ -80,18 +85,6 @@ export default function Measurements() {
           const templeWidthPixels = Math.abs(
             landmarks.getJawOutline()[0].x - landmarks.getJawOutline()[16].x
           );
-
-          // Calcular a escala usando um cartão de crédito
-          const referenceWidthMm = 85.6; // Largura do cartão de crédito
-          const referencePixelWidth = prompt(
-            'Meça a largura do cartão de crédito na imagem (em pixels) e insira o valor:',
-            '100'
-          );
-          let scale = pixelScale;
-          if (referencePixelWidth && !isNaN(referencePixelWidth)) {
-            scale = referenceWidthMm / parseFloat(referencePixelWidth);
-            setPixelScale(scale);
-          }
 
           // Converter pixels para mm
           setMeasurements({
@@ -242,7 +235,7 @@ export default function Measurements() {
               <strong>Largura entre as têmporas:</strong> Distância entre as têmporas.
             </p>
             <p className="text-sm text-gray-600 mb-4">
-              <strong>Instruções para Precisão:</strong> Posicione um cartão de crédito na testa para calibrar as medições. Após capturar a imagem, insira a largura do cartão em pixels para calcular a escala. A IA detectará automaticamente seu rosto e calculará as medições.
+              <strong>Instruções para Precisão:</strong> Certifique-se de que seu rosto está bem iluminado e visível na câmera. A IA detectará automaticamente seu rosto e calculará as medições com base na distância pupilar média.
             </p>
             <button
               onClick={() => setShowModal(false)}
