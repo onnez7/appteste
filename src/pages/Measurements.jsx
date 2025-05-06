@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import Webcam from 'react-webcam';
 import { InformationCircleIcon, ArrowPathIcon, CameraIcon } from '@heroicons/react/24/outline';
 import BottomNavBar from '../components/BottomNavBar';
-import * as faceapi from 'face-api.js';
+import { FaceMesh } from '@mediapipe/face_mesh';
 
 export default function Measurements() {
   const [showCamera, setShowCamera] = useState(false);
@@ -18,43 +18,50 @@ export default function Measurements() {
   const [pixelScale, setPixelScale] = useState(1);
   const [isModelLoaded, setIsModelLoaded] = useState(false);
   const [modelError, setModelError] = useState(null);
-  const [useManualScale, setUseManualScale] = useState(false);
-  const [manualDp, setManualDp] = useState(62); // DP padrão para fallback manual
+  const [adjustedDp, setAdjustedDp] = useState(62); // DP ajustada pelo usuário
   const webcamRef = useRef(null);
   const canvasRef = useRef(null);
+  const faceMeshRef = useRef(null);
 
-  // Carregar modelos do face-api.js
+  // Inicializar MediaPipe Face Mesh
   useEffect(() => {
-    const loadModels = async () => {
+    const loadFaceMesh = async () => {
       try {
-        console.log('Tentando carregar tinyFaceDetector de /models...');
-        await faceapi.nets.tinyFaceDetector.loadFromUri('/models').catch(err => {
-          throw new Error(`Falha ao carregar tinyFaceDetector: ${err.message}`);
+        console.log('Inicializando MediaPipe Face Mesh...');
+        faceMeshRef.current = new FaceMesh({
+          locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`,
         });
-        console.log('tinyFaceDetector carregado com sucesso.');
 
-        console.log('Tentando carregar faceLandmark68TinyNet de /models...');
-        await faceapi.nets.faceLandmark68TinyNet.loadFromUri('/models').catch(err => {
-          throw new Error(`Falha ao carregar faceLandmark68TinyNet: ${err.message}`);
+        faceMeshRef.current.setOptions({
+          maxNumFaces: 1,
+          refineLandmarks: true, // Melhorar precisão para íris
+          minDetectionConfidence: 0.5,
+          minTrackingConfidence: 0.5,
         });
-        console.log('faceLandmark68TinyNet carregado com sucesso.');
 
+        await faceMeshRef.current.initialize();
+        console.log('MediaPipe Face Mesh inicializado com sucesso.');
         setIsModelLoaded(true);
         setModelError(null);
       } catch (error) {
-        console.error('Erro ao carregar modelos:', error);
-        setModelError(error.message || 'Falha ao carregar os modelos de IA.');
+        console.error('Erro ao inicializar MediaPipe Face Mesh:', error);
+        setModelError('Falha ao carregar o modelo de IA. Use o modo manual.');
         setIsModelLoaded(false);
-        setUseManualScale(true); // Ativar fallback manual
       }
     };
-    loadModels();
+    loadFaceMesh();
+
+    return () => {
+      if (faceMeshRef.current) {
+        faceMeshRef.current.close();
+      }
+    };
   }, []);
 
   // Função para capturar e processar a imagem
   const captureImage = async () => {
-    if (!isModelLoaded && !useManualScale) {
-      alert(modelError || 'Os modelos de IA ainda estão carregando. Tente novamente em alguns segundos.');
+    if (!isModelLoaded && !adjustedDp) {
+      alert(modelError || 'O modelo de IA ainda está carregando. Tente novamente.');
       return;
     }
 
@@ -78,97 +85,122 @@ export default function Measurements() {
         let lensHeightPixels = 0;
         let templeWidthPixels = 0;
 
-        if (isModelLoaded && !useManualScale) {
+        if (isModelLoaded) {
           try {
-            console.log('Detectando rosto na imagem...');
-            const detections = await faceapi
-              .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions())
-              .withFaceLandmarks(true);
+            // Criar um elemento de vídeo temporário para processamento
+            const video = document.createElement('video');
+            video.width = img.width;
+            video.height = img.height;
+            const stream = canvas.captureStream();
+            video.srcObject = stream;
+            await video.play();
 
-            if (detections) {
-              const landmarks = detections.landmarks;
+            // Processar imagem com MediaPipe
+            const results = await faceMeshRef.current.send({ image: img });
+            if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+              const landmarks = results.multiFaceLandmarks[0];
 
-              // Calcular a distância pupilar (DP)
-              const leftPupil = landmarks.getLeftEye()[3];
-              const rightPupil = landmarks.getRightEye()[0];
-              dpPixels = Math.abs(rightPupil.x - leftPupil.x);
+              // Pontos da íris esquerda (MediaPipe: 468-473) e direita (474-479)
+              const leftIrisLeft = landmarks[468]; // Borda esquerda da íris esquerda
+              const leftIrisRight = landmarks[470]; // Borda direita da íris esquerda
+              const rightIrisLeft = landmarks[474]; // Borda esquerda da íris direita
+              const rightIrisRight = landmarks[476]; // Borda direita da íris direita
 
-              // Calcular a escala usando a DP média (62 mm)
-              const averageDpMm = 62;
-              scale = averageDpMm / dpPixels;
+              // Calcular largura média da íris em pixels
+              const leftIrisWidth = Math.abs(leftIrisRight.x - leftIrisLeft.x) * img.width;
+              const rightIrisWidth = Math.abs(rightIrisRight.x - rightIrisLeft.x) * img.width;
+              const avgIrisWidth = (leftIrisWidth + rightIrisWidth) / 2;
+
+              // Calcular escala usando largura média da íris (12 mm)
+              const averageIrisMm = 12;
+              scale = averageIrisMm / avgIrisWidth;
               setPixelScale(scale);
 
-              // Calcular largura do rosto
-              faceWidthPixels = Math.abs(
-                landmarks.getLeftEye()[0].x - landmarks.getRightEye()[3].x
-              );
+              // Calcular DP (distância entre centros das pupilas)
+              const leftPupil = landmarks[468]; // Aproximação do centro da pupila esquerda
+              const rightPupil = landmarks[474]; // Aproximação do centro da pupila direita
+              dpPixels = Math.abs(rightPupil.x - leftPupil.x) * img.width;
 
-              // Calcular altura da lente
-              const eyeCenterY = (leftPupil.y + rightPupil.y) / 2;
-              const forehead = landmarks.getMouth()[0];
-              lensHeightPixels = Math.abs(eyeCenterY - forehead.y);
+              // Calcular largura do rosto (baseado nas bordas externas dos olhos)
+              const leftEyeOuter = landmarks[130]; // Canto externo do olho esquerdo
+              const rightEyeOuter = landmarks[359]; // Canto externo do olho direito
+              faceWidthPixels = Math.abs(rightEyeOuter.x - leftEyeOuter.x) * img.width;
 
-              // Calcular largura entre as têmporas
-              templeWidthPixels = Math.abs(
-                landmarks.getJawOutline()[0].x - landmarks.getJawOutline()[16].x
-              );
+              // Calcular altura da lente (distância entre olhos e boca)
+              const eyeCenterY = (leftPupil.y + rightPupil.y) / 2 * img.height;
+              const mouth = landmarks[13]; // Centro da boca
+              lensHeightPixels = Math.abs(eyeCenterY - mouth.y * img.height);
+
+              // Calcular largura entre as têmporas (baseado nas bordas da face)
+              const leftTemple = landmarks[234]; // Têmpora esquerda
+              const rightTemple = landmarks[454]; // Têmpora direita
+              templeWidthPixels = Math.abs(rightTemple.x - leftTemple.x) * img.width;
 
               // Desenhar marcações no canvas
               ctx.beginPath();
-              ctx.arc(leftPupil.x, leftPupil.y, 5, 0, 2 * Math.PI);
-              ctx.arc(rightPupil.x, rightPupil.y, 5, 0, 2 * Math.PI);
+              ctx.arc(leftPupil.x * img.width, leftPupil.y * img.height, 5, 0, 2 * Math.PI);
+              ctx.arc(rightPupil.x * img.width, rightPupil.y * img.height, 5, 0, 2 * Math.PI);
               ctx.fillStyle = 'red';
               ctx.fill();
               ctx.strokeStyle = 'blue';
-              ctx.moveTo(leftPupil.x, leftPupil.y);
-              ctx.lineTo(rightPupil.x, rightPupil.y);
+              ctx.moveTo(leftPupil.x * img.width, leftPupil.y * img.height);
+              ctx.lineTo(rightPupil.x * img.width, rightPupil.y * img.height);
               ctx.stroke();
 
-              console.log('Rosto detectado e medições calculadas.');
+              // Converter pixels para mm
+              const calculatedDp = Math.round(dpPixels * scale);
+              setAdjustedDp(calculatedDp);
+              setMeasurements({
+                dp: calculatedDp,
+                faceWidth: Math.round(faceWidthPixels * scale),
+                lensHeight: Math.round(lensHeightPixels * scale),
+                templeWidth: Math.round(templeWidthPixels * scale),
+              });
+
+              console.log('Medições calculadas com MediaPipe:', measurements);
             } else {
               console.warn('Nenhum rosto detectado na imagem.');
-              alert('Nenhum rosto detectado. Certifique-se de que seu rosto está visível na imagem.');
-              setUseManualScale(true);
+              alert('Nenhum rosto detectado. Certifique-se de que seu rosto está visível.');
               return;
             }
           } catch (error) {
             console.error('Erro ao processar imagem:', error);
-            alert('Erro ao processar a imagem. Usando modo manual.');
-            setUseManualScale(true);
+            alert('Erro ao processar a imagem. Use o modo manual.');
             return;
           }
         }
 
-        if (useManualScale) {
-          // Modo manual: usar DP informada pelo usuário
-          scale = manualDp / 100; // Aproximação (100 pixels como base)
+        if (!isModelLoaded) {
+          // Modo manual: usar DP ajustada pelo usuário
+          scale = adjustedDp / 100; // Aproximação (100 pixels como base)
           setPixelScale(scale);
-          dpPixels = 100; // Valor fixo para cálculo manual
-          faceWidthPixels = 200; // Aproximação para largura do rosto
-          lensHeightPixels = 50; // Aproximação para altura da lente
-          templeWidthPixels = 250; // Aproximação para largura das têmporas
-          console.log('Usando modo manual com DP:', manualDp);
-        }
+          dpPixels = 100;
+          faceWidthPixels = 200;
+          lensHeightPixels = 50;
+          templeWidthPixels = 250;
 
-        // Converter pixels para mm
-        setMeasurements({
-          dp: Math.round(dpPixels * scale),
-          faceWidth: Math.round(faceWidthPixels * scale),
-          lensHeight: Math.round(lensHeightPixels * scale),
-          templeWidth: Math.round(templeWidthPixels * scale),
-        });
+          setMeasurements({
+            dp: Math.round(dpPixels * scale),
+            faceWidth: Math.round(faceWidthPixels * scale),
+            lensHeight: Math.round(lensHeightPixels * scale),
+            templeWidth: Math.round(templeWidthPixels * scale),
+          });
+          console.log('Usando modo manual com DP:', adjustedDp);
+        }
       };
     }
   };
 
-  // Salvar medições
+  // Salvar medições e armazenar ajuste do usuário
   const handleSave = () => {
     if (capturedImage && measurements.dp > 0) {
       setSavedMeasurements(measurements);
+      // Armazenar ajuste do usuário no localStorage para aprendizado futuro
+      localStorage.setItem('userAdjustedDp', adjustedDp);
       setShowCamera(false);
       setCapturedImage(null);
     } else {
-      alert('Por favor, capture uma imagem válida com um rosto detectado antes de salvar.');
+      alert('Por favor, capture uma imagem válida antes de salvar.');
     }
   };
 
@@ -183,8 +215,15 @@ export default function Measurements() {
       lensHeight: 0,
       templeWidth: 0,
     });
-    setUseManualScale(isModelLoaded ? false : true);
   };
+
+  // Carregar DP ajustada anteriormente (se disponível)
+  useEffect(() => {
+    const storedDp = localStorage.getItem('userAdjustedDp');
+    if (storedDp) {
+      setAdjustedDp(Number(storedDp));
+    }
+  }, []);
 
   return (
     <div className="p-4">
@@ -192,22 +231,8 @@ export default function Measurements() {
         <h2 className="text-lg font-semibold text-gray-800 mb-2">Realizar Medições com IA</h2>
         {!isModelLoaded && (
           <p className="text-sm text-red-600 mb-2">
-            {modelError || 'Carregando modelos de IA, aguarde...'}
+            {modelError || 'Carregando modelo de IA, aguarde...'}
           </p>
-        )}
-        {useManualScale && (
-          <div className="mb-4">
-            <p className="text-sm text-gray-600 mb-2">
-              Modo manual ativado. Insira sua distância pupilar (DP) em mm:
-            </p>
-            <input
-              type="number"
-              value={manualDp}
-              onChange={(e) => setManualDp(Number(e.target.value))}
-              className="w-full p-2 border rounded"
-              placeholder="Ex.: 62"
-            />
-          </div>
         )}
         {showCamera && (
           <div className="relative">
@@ -230,7 +255,7 @@ export default function Measurements() {
             <button
               onClick={captureImage}
               className="flex-1 bg-secondary text-white px-4 py-2 rounded-full text-sm hover:bg-opacity-80 transition"
-              disabled={!isModelLoaded && !useManualScale}
+              disabled={!isModelLoaded}
             >
               <CameraIcon className="w-5 h-5 inline mr-2" /> Tirar Foto
             </button>
@@ -242,6 +267,27 @@ export default function Measurements() {
         <div className="mb-6">
           <h2 className="text-lg font-semibold text-gray-800 mb-2">Imagem Capturada</h2>
           <canvas ref={canvasRef} className="w-full rounded-2xl mb-4" />
+          <p className="text-sm text-gray-600 mb-2">
+            Ajuste a Distância Pupilar (DP) se necessário:
+          </p>
+          <input
+            type="range"
+            min="50"
+            max="80"
+            value={adjustedDp}
+            onChange={(e) => {
+              const newDp = Number(e.target.value);
+              setAdjustedDp(newDp);
+              setMeasurements({
+                ...measurements,
+                dp: newDp,
+                faceWidth: Math.round((measurements.faceWidth / measurements.dp) * newDp),
+                lensHeight: Math.round((measurements.lensHeight / measurements.dp) * newDp),
+                templeWidth: Math.round((measurements.templeWidth / measurements.dp) * newDp),
+              });
+            }}
+            className="w-full mb-4"
+          />
           <p className="text-sm text-gray-600 mb-2">
             Medições Calculadas (Escala: {pixelScale.toFixed(2)} mm/pixel):
           </p>
@@ -302,7 +348,7 @@ export default function Measurements() {
               <strong>Largura entre as têmporas:</strong> Distância entre as têmporas.
             </p>
             <p className="text-sm text-gray-600 mb-4">
-              <strong>Instruções para Precisão:</strong> Certifique-se de que seu rosto está bem iluminado e visível na câmera. Se a IA não funcionar, você pode inserir sua distância pupilar manualmente.
+              <strong>Instruções para Precisão:</strong> Certifique-se de que seu rosto está bem iluminado e visível na câmera. Ajuste a DP com o slider, se necessário.
             </p>
             <button
               onClick={() => setShowModal(false)}
