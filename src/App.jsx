@@ -6,7 +6,7 @@ import Consultations from './pages/Consultations';
 import Subscriptions from './pages/Subscriptions';
 import Measurements from './pages/Measurements';
 
-export function App() {
+export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Home />} />
