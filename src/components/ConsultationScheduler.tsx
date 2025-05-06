@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import Calendar, { Value } from 'react-calendar';
+import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
 import { QuestionMarkCircleIcon, MapPinIcon, ClockIcon, UserIcon } from '@heroicons/react/24/outline';
 
@@ -88,13 +88,7 @@ export default function ConsultationScheduler() {
       <div className="mb-6">
         <h2 className="text-lg font-semibold text-gray-800 mb-2">Selecione uma Data</h2>
         <Calendar
-          onChange={(value: Value, event: React.MouseEvent<HTMLButtonElement>) => {
-            if (value instanceof Date) {
-              setSelectedDate(value);
-            } else {
-              setSelectedDate(null);
-            }
-          }}
+          onChange={(value: Date | null) => setSelectedDate(value)}
           value={selectedDate}
           tileClassName={({ date }) =>
             isDateAvailable(date) ? 'bg-primary text-white rounded-full' : ''
