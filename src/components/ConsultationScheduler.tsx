@@ -88,7 +88,13 @@ export default function ConsultationScheduler() {
       <div className="mb-6">
         <h2 className="text-lg font-semibold text-gray-800 mb-2">Selecione uma Data</h2>
         <Calendar
-          onChange={(value: Date | null) => setSelectedDate(value)}
+          onChange={(value: Date | Date[] | null, event: React.MouseEvent<HTMLButtonElement>) => {
+            if (value instanceof Date) {
+              setSelectedDate(value);
+            } else {
+              setSelectedDate(null);
+            }
+          }}
           value={selectedDate}
           tileClassName={({ date }) =>
             isDateAvailable(date) ? 'bg-primary text-white rounded-full' : ''
