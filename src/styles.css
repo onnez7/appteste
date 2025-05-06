@@ -1,0 +1,12 @@
+@import "tailwindcss";
+
+:root {
+  --primary: #FE9229;
+  --secondary: #482766;
+}
+
+/* Optional: Utility classes for custom colors */
+.bg-primary { background-color: var(--primary); }
+.text-primary { color: var(--primary); }
+.bg-secondary { background-color: var(--secondary); }
+.text-secondary { color: var(--secondary); }
