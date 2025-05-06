@@ -2,6 +2,7 @@
   "name": "app-visao",
   "private": true,
   "version": "0.0.0",
+  "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -13,9 +14,9 @@
     "@tailwindcss/forms": "^0.5.10",
     "@vercel/speed-insights": "^1.2.0",
     "autoprefixer": "^10.4.21",
+    "face-api.js": "^0.22.2",
     "postcss": "^8.5.3",
     "react": "^18.2.0",
-    "face-api.js": "^0.22.2",
     "react-calendar": "^5.1.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.22.0",
@@ -31,6 +32,5 @@
     "eslint-plugin-react-refresh": "^0.4.19",
     "globals": "^16.0.0",
     "vite": "^5.0.0"
-  },
-  "cacheBust": "2025-05-06"
+  }
 }
