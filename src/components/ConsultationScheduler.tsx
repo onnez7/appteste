@@ -1,7 +1,51 @@
 import { useState } from 'react';
-import Calendar from 'react-calendar';
+import Calendar, { Value } from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
 import { QuestionMarkCircleIcon, MapPinIcon, ClockIcon, UserIcon } from '@heroicons/react/24/outline';
+
+interface TimeSlot {
+  time: string;
+  shift: 'morning' | 'afternoon';
+}
+
+interface AvailableTimes {
+  [key: string]: TimeSlot[];
+}
+
+const availableTimes: AvailableTimes = {
+  '2025-05-12': [
+    { time: '09:00', shift: 'morning' },
+    { time: '10:30', shift: 'morning' },
+    { time: '14:00', shift: 'afternoon' },
+  ],
+  '2025-05-15': [
+    { time: '11:00', shift: 'morning' },
+    { time: '15:30', shift: 'afternoon' },
+  ],
+  '2025-05-20': [
+    { time: '09:30', shift: 'morning' },
+    { time: '16:00', shift: 'afternoon' },
+  ],
+};
+
+const professionals = [
+  { id: '1', name: 'Dr. João Silva', specialty: 'Oftalmologista', photo: 'placeholder' },
+  { id: '2', name: 'Dra. Maria Oliveira', specialty: 'Oftalmologista', photo: 'placeholder' },
+];
+
+const upcomingConsultations = [
+  { date: '20/05/2025', time: '15:00', professional: 'Dr. João Silva', location: 'Ótica Centro – Florianópolis' },
+];
+
+const pastConsultations = [
+  { date: '10/04/2025', time: '14:00', professional: 'Dra. Maria Oliveira', location: 'Ótica Sul – Florianópolis', canReview: true },
+];
+
+const availableDates = [
+  new Date(2025, 4, 12),
+  new Date(2025, 4, 15),
+  new Date(2025, 4, 20),
+];
 
 export default function ConsultationScheduler() {
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
@@ -9,44 +53,9 @@ export default function ConsultationScheduler() {
   const [selectedProfessional, setSelectedProfessional] = useState<string | null>(null);
   const [shiftFilter, setShiftFilter] = useState<'morning' | 'afternoon' | null>(null);
 
-  const availableDates = [
-    new Date(2025, 4, 12),
-    new Date(2025, 4, 15),
-    new Date(2025, 4, 20),
-  ];
-
-  const availableTimes = {
-    '2025-05-12': [
-      { time: '09:00', shift: 'morning' },
-      { time: '10:30', shift: 'morning' },
-      { time: '14:00', shift: 'afternoon' },
-    ],
-    '2025-05-15': [
-      { time: '11:00', shift: 'morning' },
-      { time: '15:30', shift: 'afternoon' },
-    ],
-    '2025-05-20': [
-      { time: '09:30', shift: 'morning' },
-      { time: '16:00', shift: 'afternoon' },
-    ],
-  };
-
-  const professionals = [
-    { id: '1', name: 'Dr. João Silva', specialty: 'Oftalmologista', photo: 'placeholder' },
-    { id: '2', name: 'Dra. Maria Oliveira', specialty: 'Oftalmologista', photo: 'placeholder' },
-  ];
-
-  const upcomingConsultations = [
-    { date: '20/05/2025', time: '15:00', professional: 'Dr. João Silva', location: 'Ótica Centro – Florianópolis' },
-  ];
-
-  const pastConsultations = [
-    { date: '10/04/2025', time: '14:00', professional: 'Dra. Maria Oliveira', location: 'Ótica Sul – Florianópolis', canReview: true },
-  ];
-
   const filteredTimes = selectedDate
     ? (availableTimes[selectedDate.toISOString().split('T')[0]] || [])
-        .filter((slot) => !shiftFilter || slot.shift === shiftFilter)
+        .filter((slot: TimeSlot) => !shiftFilter || slot.shift === shiftFilter)
     : [];
 
   const handleConfirm = () => {
@@ -72,17 +81,20 @@ export default function ConsultationScheduler() {
 
   return (
     <div className="p-4">
-      {/* Header */}
       <div className="flex justify-between items-center mb-4">
         <h1 className="text-xl font-bold text-gray-800">Minhas Consultas</h1>
         <QuestionMarkCircleIcon className="w-6 h-6 text-secondary cursor-pointer" />
       </div>
-
-      {/* Calendar */}
       <div className="mb-6">
         <h2 className="text-lg font-semibold text-gray-800 mb-2">Selecione uma Data</h2>
         <Calendar
-          onChange={(value: Date) => setSelectedDate(value)}
+          onChange={(value: Value, event: React.MouseEvent<HTMLButtonElement>) => {
+            if (value instanceof Date) {
+              setSelectedDate(value);
+            } else {
+              setSelectedDate(null);
+            }
+          }}
           value={selectedDate}
           tileClassName={({ date }) =>
             isDateAvailable(date) ? 'bg-primary text-white rounded-full' : ''
@@ -90,8 +102,6 @@ export default function ConsultationScheduler() {
           className="border-none shadow-lg rounded-2xl p-4 w-full"
         />
       </div>
-
-      {/* Available Times */}
       {selectedDate && (
         <div className="mb-6">
           <h2 className="text-lg font-semibold text-gray-800 mb-2">Horários Disponíveis</h2>
@@ -115,7 +125,7 @@ export default function ConsultationScheduler() {
           </div>
           <div className="flex flex-wrap gap-2">
             {filteredTimes.length > 0 ? (
-              filteredTimes.map((slot, idx) => (
+              filteredTimes.map((slot: TimeSlot, idx: number) => (
                 <button
                   key={idx}
                   onClick={() => setSelectedTime(slot.time)}
@@ -134,8 +144,6 @@ export default function ConsultationScheduler() {
           </div>
         </div>
       )}
-
-      {/* Select Professional (Optional) */}
       {selectedTime && professionals.length > 1 && (
         <div className="mb-6">
           <h2 className="text-lg font-semibold text-gray-800 mb-2">Selecionar Profissional</h2>
@@ -158,8 +166,6 @@ export default function ConsultationScheduler() {
           </div>
         </div>
       )}
-
-      {/* Clinic Address */}
       {selectedTime && (
         <div className="mb-6">
           <h2 className="text-lg font-semibold text-gray-800 mb-2">Endereço da Consulta</h2>
@@ -180,8 +186,6 @@ export default function ConsultationScheduler() {
           </div>
         </div>
       )}
-
-      {/* Confirmation Button */}
       {selectedTime && (
         <div className="mb-6">
           <div className="bg-gray-100 p-4 rounded-2xl mb-4">
@@ -203,8 +207,6 @@ export default function ConsultationScheduler() {
           </button>
         </div>
       )}
-
-      {/* Upcoming Consultations */}
       <div className="mb-6">
         <h2 className="text-lg font-semibold text-gray-800 mb-2">Consultas Futuras</h2>
         {upcomingConsultations.length > 0 ? (
@@ -227,8 +229,6 @@ export default function ConsultationScheduler() {
           <p className="text-sm text-gray-600">Nenhuma consulta futura agendada.</p>
         )}
       </div>
-
-      {/* Consultation History */}
       <div>
         <h2 className="text-lg font-semibold text-gray-800 mb-2">Histórico de Consultas</h2>
         {pastConsultations.length > 0 ? (

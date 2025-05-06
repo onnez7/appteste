@@ -4,19 +4,26 @@ import { InformationCircleIcon, ArrowPathIcon, EyeIcon } from '@heroicons/react/
 import { useNavigate } from 'react-router-dom';
 import BottomNavBar from '../components/BottomNavBar';
 
+interface Measurements {
+  dp: number;
+  faceWidth: number;
+  lensHeight: number;
+  templeWidth: number;
+}
+
 export default function Measurements() {
   const [showCamera, setShowCamera] = useState(true);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [rulerPosition, setRulerPosition] = useState(50); // Posição inicial da régua (em %)
   const [faceBox, setFaceBox] = useState({ width: 200, height: 300, x: 50, y: 50 }); // Caixa do rosto (pixels)
-  const [measurements, setMeasurements] = useState({
+  const [measurements, setMeasurements] = useState<Measurements>({
     dp: 62, // Distância Pupilar (mm)
     faceWidth: 140, // Largura do rosto (mm)
     lensHeight: 35, // Altura da lente (mm)
     templeWidth: 130, // Largura entre as têmporas (mm)
   });
-  const [adjustedMeasurements, setAdjustedMeasurements] = useState({ ...measurements });
-  const [savedMeasurements, setSavedMeasurements] = useState(null);
+  const [adjustedMeasurements, setAdjustedMeasurements] = useState<Measurements>({ ...measurements });
+  const [savedMeasurements, setSavedMeasurements] = useState<Measurements | null>(null);
   const [showModal, setShowModal] = useState(false);
   const webcamRef = useRef<Webcam>(null);
   const navigate = useNavigate();
@@ -100,7 +107,6 @@ export default function Measurements() {
 
   return (
     <div className="min-h-screen bg-white pb-16">
-      {/* Câmera ou Imagem Capturada */}
       <div className="relative w-full h-[70vh]">
         {showCamera ? (
           <Webcam
@@ -146,8 +152,6 @@ export default function Measurements() {
           </button>
         )}
       </div>
-
-      {/* Ajustes da Régua e Caixa do Rosto */}
       {capturedImage && (
         <div className="p-4">
           <h2 className="text-lg font-semibold text-gray-800 mb-2">Ajuste a Régua</h2>
@@ -197,8 +201,6 @@ export default function Measurements() {
               className="w-full mt-1"
             />
           </div>
-
-          {/* Measurements */}
           <div className="mb-6 mt-6">
             <h2 className="text-lg font-semibold text-gray-800 mb-2">Medições</h2>
             <div className="bg-white p-4 rounded-2xl shadow-md">
@@ -216,8 +218,6 @@ export default function Measurements() {
               </p>
             </div>
           </div>
-
-          {/* Save Measurements */}
           <div className="mb-6">
             <button
               onClick={handleSave}
@@ -229,8 +229,6 @@ export default function Measurements() {
               Enviar para Especialista
             </button>
           </div>
-
-          {/* Useful Buttons */}
           {savedMeasurements && (
             <div className="mb-6">
               <h2 className="text-lg font-semibold text-gray-800 mb-2">Ações</h2>
@@ -259,8 +257,6 @@ export default function Measurements() {
           )}
         </div>
       )}
-
-      {/* Modal for Explaining Measurements */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white p-6 rounded-2xl max-w-md w-full">
@@ -284,7 +280,6 @@ export default function Measurements() {
               Fechar
             </button>
           </div>
-           
         </div>
       )}
       <BottomNavBar />
